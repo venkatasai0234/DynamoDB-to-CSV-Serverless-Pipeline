@@ -1,0 +1,86 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Resources:
+  OutputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: cs218-final-output-bucket-018320835
+  CsvQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: cs218-final-processing-queue
+      VisibilityTimeout: 200
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: lambda-csv-converter-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+      - PolicyName: LambdaS3SqsPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - s3:GetObject
+            - s3:PutObject
+            Resource:
+            - arn:aws:s3:::cs218-final-input-bucket-018320835/*
+            - arn:aws:s3:::cs218-final-output-bucket-018320835/*
+          - Effect: Allow
+            Action:
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+            Resource: '*'
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: '*'
+  CsvConverterLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: csv-converter-lambda
+      Handler: index.handler
+      Runtime: python3.9
+      Role:
+        Fn::GetAtt:
+        - LambdaExecutionRole
+        - Arn
+      CodeUri: s3://cs218-final-code-bucket-018320835/770286467130321ce905e540e8232368
+      Timeout: 120
+      MemorySize: 256
+  LambdaSQSTrigger:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 1
+      EventSourceArn:
+        Fn::GetAtt:
+        - CsvQueue
+        - Arn
+      FunctionName:
+        Fn::GetAtt:
+        - CsvConverterLambda
+        - Arn
+      Enabled: true
+  QueuePopulatorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: queue-populator-lambda
+      Handler: index.handler
+      Runtime: python3.9
+      Role:
+        Fn::GetAtt:
+        - LambdaExecutionRole
+        - Arn
+      CodeUri: s3://cs218-final-code-bucket-018320835/6a55381ff3dffa56a6abd8d1ed498388
+      Timeout: 60
+      MemorySize: 128
